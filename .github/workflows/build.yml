@@ -29,10 +29,7 @@ jobs:
 
       - name: Install Android SDK components
         run: |
-          sdkmanager --install "platforms;android-34" \
-            "build-tools;34.0.0" \
-            "ndk;26.1.10909125" \
-            "cmdline-tools;latest"
+          sdkmanager --install "platforms;android-34" "build-tools;34.0.0"
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
 
       # 4. 下载 proot 二进制文件（来自 DSHA 仓库）
