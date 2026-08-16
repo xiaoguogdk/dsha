@@ -59,7 +59,11 @@ public class ProotBootstrap {
     public File getBaseDir() { return baseDir; }
 
     public boolean isInstalled() {
-        return markerFile.exists() && new File(rootfsDir, "bin").exists();
+        // 校验 etc/ 和 root/ 两个关键目录：strip=1 的错误解压不会产生 etc/，
+        // 只有 strip=0 的正确解压才会，避免误判已安装
+        return markerFile.exists()
+                && new File(rootfsDir, "etc").isDirectory()
+                && new File(rootfsDir, "root").isDirectory();
     }
 
     public boolean isNodeInstalled() {

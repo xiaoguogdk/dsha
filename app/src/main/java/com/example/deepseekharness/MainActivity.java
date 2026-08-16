@@ -146,6 +146,13 @@ public class MainActivity extends AppCompatActivity {
 
                 // 步骤 1: 下载并解压 Ubuntu rootfs
                 if (!proot.isInstalled()) {
+                    // 清理旧的损坏/不完整 rootfs（如有）
+                    if (proot.getRootfsDir().exists()) {
+                        updateStatus("清理旧的 rootfs...");
+                        deleteRecursively(proot.getRootfsDir());
+                        new File(proot.getBaseDir(), ".installed").delete();
+                    }
+
                     updateStatus("正在下载 Ubuntu rootfs...");
                     String rootfsUrl = pickFastestUrl(ProotBootstrap.ROOTFS_URLS);
                     File tmpFile = new File(proot.getBaseDir(), "rootfs.tar.gz");
@@ -155,8 +162,15 @@ public class MainActivity extends AppCompatActivity {
                     });
 
                     updateStatus("正在解压 rootfs...");
-                    TarGzipExtractor.extract(tmpFile, proot.getRootfsDir(), 1);
+                    // 重要：ubuntu-base tarball 顶层没有包装目录，必须 strip=0
+                    TarGzipExtractor.extract(tmpFile, proot.getRootfsDir(), 0);
                     tmpFile.delete();
+
+                    // 校验解压结果
+                    if (!new File(proot.getRootfsDir(), "etc").isDirectory()
+                            || !new File(proot.getRootfsDir(), "root").isDirectory()) {
+                        throw new IOException("rootfs 解压不完整，缺少 etc/ 或 root/ 目录");
+                    }
 
                     // 标记安装完成
                     new File(proot.getBaseDir(), ".installed").createNewFile();
@@ -324,6 +338,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ================= 工具方法 =================
+
+    private void deleteRecursively(File file) {
+        if (file == null || !file.exists()) return;
+        File[] children = file.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                deleteRecursively(child);
+            }
+        }
+        file.delete();
+    }
 
     private String pickFastestUrl(String[] urls) {
         long bestLat = Long.MAX_VALUE;
