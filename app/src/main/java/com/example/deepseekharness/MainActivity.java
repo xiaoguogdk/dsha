@@ -137,6 +137,13 @@ public class MainActivity extends AppCompatActivity {
 
         new Thread(() -> {
             try {
+                // 步骤 0: 冒烟测试 - 验证 proot 能正常执行
+                updateStatus("验证 proot 环境...");
+                String smoke = proot.smokeTest();
+                if (smoke != null && smoke.startsWith("FAIL")) {
+                    throw new IOException("proot 无法执行: " + smoke);
+                }
+
                 // 步骤 1: 下载并解压 Ubuntu rootfs
                 if (!proot.isInstalled()) {
                     updateStatus("正在下载 Ubuntu rootfs...");
@@ -193,7 +200,12 @@ public class MainActivity extends AppCompatActivity {
                     progressBar.setIndeterminate(false);
                     btnInstall.setEnabled(true);
                     setState(State.ERROR);
-                    updateStatus("安装失败: " + e.getMessage());
+                    String detail = e.getMessage();
+                    if (detail != null && detail.length() > 800) {
+                        detail = detail.substring(detail.length() - 800);
+                    }
+                    updateStatus("安装失败: " + detail);
+                    android.util.Log.e("DSH", "安装失败", e);
                 });
             }
         }).start();
