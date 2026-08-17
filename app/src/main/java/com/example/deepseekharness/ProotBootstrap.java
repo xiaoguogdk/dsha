@@ -1,10 +1,12 @@
 package com.example.deepseekharness;
 
 import android.content.Context;
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -92,6 +94,28 @@ public class ProotBootstrap {
         copyExec(findNativeLib("libandroidshmem.so"), new File(libDir, "libandroid-shmem.so"));
     }
 
+    /** 确保 rootfs 基础配置可用（DNS）。
+     *  proot 环境下 rootfs 继承的 Android /etc/resolv.conf 通常是无效的
+     *  （Android 用 netd 管理 DNS），必须写入公共 DNS，否则 apt/curl 无法解析域名。 */
+    public void ensureRootfsConfig() {
+        if (rootfsDir == null) return;
+        File resolvConf = new File(rootfsDir, "etc/resolv.conf");
+        boolean hasNs = false;
+        try (BufferedReader r = new BufferedReader(new FileReader(resolvConf))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (line.trim().startsWith("nameserver")) { hasNs = true; break; }
+            }
+        } catch (IOException ignored) {}
+        if (!hasNs) {
+            try (FileOutputStream out = new FileOutputStream(resolvConf)) {
+                out.write(("nameserver 114.114.114.114\n"
+                         + "nameserver 223.5.5.5\n"
+                         + "nameserver 8.8.8.8\n").getBytes("UTF-8"));
+            } catch (IOException ignored) {}
+        }
+    }
+
     private File findNativeLib(String name) {
         File direct = new File(nativeLibDir, name);
         if (direct.isFile()) return direct;
@@ -135,6 +159,7 @@ public class ProotBootstrap {
 
     /** 在 rootfs 内执行 bash 命令 */
     public Process execRootfs(String bashCommand) throws IOException {
+        ensureRootfsConfig();
         String[] argv = {
             prootPath(),
             "--link2symlink", "-L", "--kill-on-exit",
