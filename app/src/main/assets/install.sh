@@ -34,6 +34,13 @@ elif [ -f /etc/apt/sources.list ]; then
   sed -i 's|https://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|https://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
 fi
 
+# 1.5. 修复 dpkg 中断状态
+# 上次安装若被系统中断（App 被杀/切后台），dpkg 会残留半完成事务，
+# 导致后续 apt-get install 报 "dpkg was interrupted, run dpkg --configure -a"
+echo "==> [1.5/7] 修复 dpkg 状态"
+dpkg --configure -a 2>&1 || true
+apt-get install -f -y 2>&1 || true
+
 # 2. 更新 apt（严格失败检测：3 次失败直接退出，避免后续装包报"找不到包"）
 echo "==> [2/7] 更新 apt 源"
 APT_OK=0
