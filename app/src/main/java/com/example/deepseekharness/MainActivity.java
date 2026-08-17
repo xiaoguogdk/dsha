@@ -233,41 +233,85 @@ public class MainActivity extends AppCompatActivity {
         btnStart.setEnabled(false);
 
         new Thread(() -> {
+            StringBuilder log = new StringBuilder();
+            Process p = null;
             try {
                 // 在 proot 中启动 dsh web
-                dshProcess = proot.execRootfs(
+                p = proot.execRootfs(
                     "cd /root && PORT=" + DSH_PORT + " dsh web 2>&1");
+                dshProcess = p;
 
-                // 等待服务就绪
-                int retries = 60;
-                while (retries-- > 0) {
-                    if (isServerReady()) {
-                        handler.post(() -> {
-                            setState(State.RUNNING);
-                            splash.setVisibility(View.GONE);
-                            webView.setVisibility(View.VISIBLE);
-                            webView.loadUrl(DSH_URL);
-                            btnStart.setEnabled(true);
-
-                            // 启动前台服务保活
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                startForegroundService(
-                                    new Intent(this, HarnessService.class)
-                                        .setAction(HarnessService.ACTION_START));
-                            } else {
-                                startService(new Intent(this, HarnessService.class)
-                                    .setAction(HarnessService.ACTION_START));
+                // 后台线程持续读取进程输出：
+                // 1) 防止 stdout 管道缓冲填满导致子进程阻塞（Java 管道缓冲约 64KB）
+                // 2) 保留最近日志，失败时展示诊断信息
+                Thread outThread = new Thread(() -> {
+                    try (InputStream in = p.getInputStream()) {
+                        byte[] buf = new byte[4096];
+                        int n;
+                        while ((n = in.read(buf)) != -1) {
+                            String s = new String(buf, 0, n, "UTF-8");
+                            synchronized (log) {
+                                log.append(s);
+                                if (log.length() > 8000) {
+                                    log.delete(0, log.length() - 8000);
+                                }
                             }
-                        });
-                        return;
+                            android.util.Log.d("DSH", s.trim());
+                        }
+                    } catch (IOException ignored) {}
+                });
+                outThread.setDaemon(true);
+                outThread.start();
+
+                // 等待服务就绪（最长 120 秒）；进程提前退出则立即报错，不再干等
+                long deadline = System.currentTimeMillis() + 120_000;
+                boolean ready = false;
+                while (System.currentTimeMillis() < deadline) {
+                    if (isServerReady()) {
+                        ready = true;
+                        break;
+                    }
+                    if (!p.isAlive()) {
+                        String tail;
+                        synchronized (log) { tail = log.toString(); }
+                        String t = tail.length() > 600 ? tail.substring(tail.length() - 600) : tail;
+                        throw new IOException("dsh 进程已退出 (退出码 "
+                            + p.exitValue() + ")\n" + t);
                     }
                     Thread.sleep(1000);
                 }
-                throw new IOException("DSH 服务未在 60 秒内启动");
+                if (!ready) {
+                    String tail;
+                    synchronized (log) { tail = log.toString(); }
+                    String t = tail.length() > 600 ? tail.substring(tail.length() - 600) : tail;
+                    throw new IOException("DSH 服务未在 120 秒内启动，最近日志:\n" + t);
+                }
+
+                handler.post(() -> {
+                    setState(State.RUNNING);
+                    splash.setVisibility(View.GONE);
+                    webView.setVisibility(View.VISIBLE);
+                    webView.loadUrl(DSH_URL);
+                    btnStart.setEnabled(true);
+
+                    // 启动前台服务保活
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(
+                            new Intent(this, HarnessService.class)
+                                .setAction(HarnessService.ACTION_START));
+                    } else {
+                        startService(new Intent(this, HarnessService.class)
+                            .setAction(HarnessService.ACTION_START));
+                    }
+                });
             } catch (Exception e) {
                 handler.post(() -> {
                     setState(State.ERROR);
-                    updateStatus("启动失败: " + e.getMessage());
+                    String msg = e.getMessage();
+                    if (msg != null && msg.length() > 800) {
+                        msg = msg.substring(msg.length() - 800);
+                    }
+                    updateStatus("启动失败: " + msg);
                     btnStart.setEnabled(true);
                 });
             }
