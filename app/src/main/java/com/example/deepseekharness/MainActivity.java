@@ -234,10 +234,9 @@ public class MainActivity extends AppCompatActivity {
 
         new Thread(() -> {
             StringBuilder log = new StringBuilder();
-            Process p = null;
             try {
                 // 在 proot 中启动 dsh web
-                p = proot.execRootfs(
+                final Process p = proot.execRootfs(
                     "cd /root && PORT=" + DSH_PORT + " dsh web 2>&1");
                 dshProcess = p;
 
